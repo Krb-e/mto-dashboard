@@ -143,10 +143,14 @@ table.ke-t tfoot td:first-child{text-align:left;}
 .adm .v{font-size:15px;font-family:'General Sans',sans-serif;color:var(--ke-text);margin-top:3px;}
 .donut-wrap{position:relative;}
 .donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;}
-.legend-tr{display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0;color:rgba(230,230,230,.82);}
+.legend-tr{display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 14px 3px 4px;color:rgba(230,230,230,.82);}
 .legend-tr .dot{width:9px;height:9px;border-radius:50%;flex:none;}
-.legend-tr .pct{margin-left:auto;color:var(--ke-text);}
-@media(max-width:900px){.ke-grid-5{grid-template-columns:repeat(2,1fr);}.ke-2col{grid-template-columns:1fr;}.adgrid-m{grid-template-columns:repeat(2,1fr);}.adcard{flex-direction:column;}}
+.legend-tr .pct{margin-left:auto;padding-left:12px;color:var(--ke-text);}
+/* Fila donut + evolución: las dos tarjetas a la misma altura exacta.
+   320 = 2px (borde superior) + 39px (encabezado) + 18px + 242px + 18px (cuerpo). */
+.ke-row-users>.ke-block{height:320px;}
+.ke-row-users .ke-chartbox{height:242px;}
+@media(max-width:900px){.ke-grid-5{grid-template-columns:repeat(2,1fr);}.ke-2col{grid-template-columns:1fr;}.adgrid-m{grid-template-columns:repeat(2,1fr);}.adcard{flex-direction:column;}.ke-row-users>.ke-block{height:auto;}}
 .srclogo{height:20px;width:auto;margin-left:12px;vertical-align:middle;opacity:.85;}
 
 @media(max-width:560px){
@@ -289,11 +293,11 @@ table.ke-t tfoot td:first-child{text-align:left;}
     <div class="ke-bbody"><div class="ke-chartbox"><canvas id="cFactDia"></canvas></div></div>
   </div>
 
-  <div class="ke-2col">
+  <div class="ke-2col ke-row-users">
     <div class="ke-block"><div class="ke-block-top"></div>
       <div class="ke-bh"><span class="ke-bt">Distribución de usuarios por fuente</span></div>
-      <div style="display:flex;gap:18px;align-items:center;padding:6px 4px;">
-        <div class="donut-wrap" style="width:240px;height:240px;flex:none;">
+      <div style="display:flex;gap:18px;align-items:center;padding:14px 6px;">
+        <div class="donut-wrap" style="width:250px;height:250px;flex:none;">
           <canvas id="cUsers"></canvas>
           <div class="donut-center"><div id="users-total" class="ke-kv" style="font-size:24px;">—</div><div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ke-muted);">usuarios</div><div id="users-delta" class="ke-ks" style="margin-top:4px;"></div></div>
         </div>
@@ -582,7 +586,7 @@ function render(c,p,D){
   mkLine('cUsersDia',lab,[
     {label:'Actual',data:cur2,borderColor:ORANGE,fill:false,tension:.3,pointRadius:N>45?0:2,borderWidth:2},
     {label:'Período anterior',data:prev2,borderColor:BEIGE,fill:false,tension:.3,pointRadius:N>45?0:2,borderWidth:2,borderDash:[4,4]}
-  ],true);
+  ],true,true);
 
   const ads={};
   D.metaCur.forEach(x=>{const k=x.ad_image_url||x.ad_creative_body||x.campaign_name||'(s/img)';const a=ads[k]=ads[k]||{img:x.ad_image_url,copy:'',impr:0,spend:0,lpv:0,pur:0,val:0,v3:0,v100:0};if(!a.copy&&x.ad_creative_body)a.copy=x.ad_creative_body;a.impr+=+x.impressions||0;a.spend+=+x.amount_spent||0;a.lpv+=+x.landing_page_views||0;a.pur+=+x.website_purchases||0;a.val+=+x.purchases_conv_value||0;a.v3+=+x.video_view_3s||0;a.v100+=+x.video_watch_100||0;});
@@ -600,9 +604,24 @@ function render(c,p,D){
       '</div></div></div>';
   }).join('')||'<div class="ke-pg-sub">Sin anuncios en el período.</div>';
 }
-function mkLine(id,labels,datasets,legend){
+/* Paso redondo para que el eje Y siempre quede en 4 marcas (0 y tres más).
+   maxTicksLimit no sirve: Chart.js elige el paso por su cuenta (con series de ~8k
+   terminaba en pasos de 5.000). Acá el tope se calcula desde el máximo real de la
+   serie en cada período: máx 8.312 -> paso 3.000 -> 0 / 3.000 / 6.000 / 9.000. */
+function paso4(max){
+  if(!(max>0)) return {max:3,step:1};
+  const mag=Math.pow(10,Math.floor(Math.log10(max/3)));
+  const step=[1,1.5,2,2.5,3,4,5,6,7.5,10].map(m=>m*mag).find(s=>s*3>=max)||Math.ceil(max/3/mag)*mag;
+  return {max:step*3,step:step};
+}
+function mkLine(id,labels,datasets,legend,eje4){
   const el=document.getElementById(id); if(!el)return; if(charts[id])charts[id].destroy();
-  charts[id]=new Chart(el,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:legend,labels:{boxWidth:12,font:{size:11}}},datalabels:{display:false}},scales:{x:{grid:{color:GRID}},y:{grid:{color:GRID},beginAtZero:true}}}});
+  const y={grid:{color:GRID},beginAtZero:true};
+  if(eje4){
+    const tope=Math.max(0,...datasets.flatMap(d=>d.data.map(v=>+v||0)));
+    const p=paso4(tope); y.max=p.max; y.ticks={stepSize:p.step};
+  }
+  charts[id]=new Chart(el,{type:'line',data:{labels,datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:legend,labels:{boxWidth:12,font:{size:11}}},datalabels:{display:false}},scales:{x:{grid:{color:GRID}},y:y}}});
 }
 function mkDonut(id,labels,data){
   const el=document.getElementById(id); if(!el)return; if(charts[id])charts[id].destroy();
