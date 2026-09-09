@@ -234,6 +234,8 @@ table.ke-t tfoot td:first-child{text-align:left;}
   <div class="tb-pills">
     <button class="tb-pill active" onclick="preset('mtd',this)">Mes en curso</button>
     <button class="tb-pill" onclick="preset('prev',this)">Mes anterior</button>
+    <button class="tb-pill" onclick="preset('7',this)">Últimos 7 días</button>
+    <button class="tb-pill" onclick="preset('14',this)">Últimos 14 días</button>
   </div>
   <button class="tb-apply" id="btnPdf" style="margin-left:auto;" onclick="exportPDF()">⬇ Exportar PDF</button>
 </div>
@@ -252,7 +254,7 @@ table.ke-t tfoot td:first-child{text-align:left;}
 <section id="p0" class="ke-page active">
   <div class="ke-pg-header">
     <div>
-      <div class="ke-eyebrow">Resumen general · mes en curso</div>
+      <div class="ke-eyebrow">Resumen general · <span class="presetauto">mes en curso</span></div>
       <h1 class="ke-pg-title">OVER<span>VIEW</span></h1>
       <div class="ke-pg-sub">Marian Todo Organizado · <span class="dateauto"></span> · vs. período anterior de igual duración</div>
     </div>
@@ -301,7 +303,7 @@ table.ke-t tfoot td:first-child{text-align:left;}
 <section id="p1" class="ke-page">
   <div class="ke-pg-header">
     <div>
-      <div class="ke-eyebrow">Pauta · mes en curso</div>
+      <div class="ke-eyebrow">Pauta · <span class="presetauto">mes en curso</span></div>
       <h1 class="ke-pg-title">PAID <span>MEDIA</span></h1>
       <div class="ke-pg-sub">Marian Todo Organizado · <span class="dateauto"></span> · vs. período anterior de igual duración</div>
     </div>
@@ -480,7 +482,8 @@ const addDays=(base,i)=>{const d=new Date(base);d.setDate(d.getDate()+i);return 
 const atMidnight=d=>new Date(d.getFullYear(),d.getMonth(),d.getDate());
 const dayDiff=(a,b)=>Math.round((atMidnight(b)-atMidnight(a))/86400000);
 
-const state={from:null,to:null};
+const state={from:null,to:null,preset:'mtd'};
+const PRESET_LBL={mtd:'mes en curso',prev:'mes anterior','7':'últimos 7 días','14':'últimos 14 días'};
 (function initDefault(){const now=new Date();const y=atMidnight(addDays(now,-1));state.from=new Date(now.getFullYear(),now.getMonth(),1);state.to=(y<state.from)?new Date(state.from):y;})();
 
 function periods(){
@@ -531,7 +534,7 @@ async function loadData(){
   const S_cur=iso(state.from),E_cur=iso(state.to),S_prev=iso(pFrom),E_prev=iso(pTo);
   try{
     const [meta,google,orders,ga4]=await Promise.all([
-      sb('mto_meta_ads','date,campaign_name,ad_name,ad_image_url,ad_image_backup_url,ad_creative_body,ad_preview_link,amount_spent,impressions,landing_page_views,website_purchases,purchases_conv_value,ctr,video_view_3s,video_watch_100',S_prev,E_cur),
+      sb('mto_meta_ads','date,campaign_name,ad_name,ad_image_url,ad_creative_body,ad_preview_link,amount_spent,impressions,landing_page_views,website_purchases,purchases_conv_value,ctr,video_view_3s,video_watch_100',S_prev,E_cur),
       sb('mto_google_ads','date,campaign_name,cost,clicks,avg_cpc',S_prev,E_cur),
       sb('mto_tiendanube_orders','date,order_payment_status,order_total_paid',S_prev,E_cur),
       sb('mto_ga4_sessions','date,source_medium,total_users,sessions,transactions,total_revenue',S_prev,E_cur)
@@ -597,7 +600,7 @@ function render(c,p,D){
   /* Se agrupa por ad_name: la URL de la imagen viene firmada por Meta y cambia todos los dias
      (parametros oh/oe y hasta el host del CDN), asi que agrupar por imagen partiria el mismo
      anuncio en varias tarjetas dentro de un mismo periodo. */
-  D.metaCur.forEach(x=>{const k=x.ad_name||x.ad_image_url||x.ad_creative_body||x.campaign_name||'(s/anuncio)';const a=ads[k]=ads[k]||{img:x.ad_image_backup_url,imgCdn:x.ad_image_url,titulo:x.ad_name||'Sin nombre',camp:x.campaign_name||'',link:x.ad_preview_link||'',copy:'',impr:0,spend:0,lpv:0,pur:0,val:0,v3:0,v100:0};if(!a.img&&x.ad_image_backup_url)a.img=x.ad_image_backup_url;if(!a.imgCdn&&x.ad_image_url)a.imgCdn=x.ad_image_url;if(!a.link&&x.ad_preview_link)a.link=x.ad_preview_link;if(!a.copy&&x.ad_creative_body)a.copy=x.ad_creative_body;a.impr+=+x.impressions||0;a.spend+=+x.amount_spent||0;a.lpv+=+x.landing_page_views||0;a.pur+=+x.website_purchases||0;a.val+=+x.purchases_conv_value||0;a.v3+=+x.video_view_3s||0;a.v100+=+x.video_watch_100||0;});
+  D.metaCur.forEach(x=>{const k=x.ad_name||x.ad_image_url||x.ad_creative_body||x.campaign_name||'(s/anuncio)';const a=ads[k]=ads[k]||{img:x.ad_image_url,titulo:x.ad_name||'Sin nombre',camp:x.campaign_name||'',link:x.ad_preview_link||'',copy:'',impr:0,spend:0,lpv:0,pur:0,val:0,v3:0,v100:0};if(!a.img&&x.ad_image_url)a.img=x.ad_image_url;if(!a.link&&x.ad_preview_link)a.link=x.ad_preview_link;if(!a.copy&&x.ad_creative_body)a.copy=x.ad_creative_body;a.impr+=+x.impressions||0;a.spend+=+x.amount_spent||0;a.lpv+=+x.landing_page_views||0;a.pur+=+x.website_purchases||0;a.val+=+x.purchases_conv_value||0;a.v3+=+x.video_view_3s||0;a.v100+=+x.video_watch_100||0;});
   const list=Object.values(ads).sort((a,b)=>b.val-a.val).slice(0,5);
   const tImpr=sum(D.metaCur,x=>x.impressions)||1;
   setTxt('stat-hook',c.mVidOk?pct(sum(D.metaCur,x=>x.video_view_3s)/tImpr*100):NA);
@@ -605,13 +608,9 @@ function render(c,p,D){
   document.getElementById('adcards').innerHTML=list.map(a=>{
     const esc=s=>String(s||'').replace(/</g,'&lt;').replace(/"/g,'&quot;');
     const cpm=a.impr?a.spend/a.impr*1000:0,ctr=a.impr?a.lpv/a.impr*100:0,cpv=a.lpv?a.spend/a.lpv:0,acos=a.val?a.spend/a.val*100:0,hook=a.impr?a.v3/a.impr*100:0,hold=a.impr?a.v100/a.impr*100:0;
-    /* Las URLs de Meta (ad_image_url) estan firmadas y caducan a los ~4-5 dias: el parametro
-       oe= las mata y el CDN pasa a responder 403. Alcanza con que el ETL se atrase ese tanto
-       para que las tarjetas queden sin imagen. Por eso la fuente principal es
-       ad_image_backup_url, la copia permanente en Supabase Storage que deja el workflow de
-       espejado; la firmada queda como fallback para los creativos todavia sin espejar. */
-    const imgPri=a.img||a.imgCdn, imgAlt=(a.img&&a.imgCdn)?a.imgCdn:'';
-    const img=imgPri?'<img class="thumb-lg" src="'+esc(imgPri)+'" data-alt="'+esc(imgAlt)+'" loading="lazy" referrerpolicy="no-referrer" alt="Creativo '+esc(a.titulo)+'" onerror="var u=this.dataset.alt;if(u){this.dataset.alt=&#39;&#39;;this.src=u;return;}this.replaceWith(Object.assign(document.createElement(&#39;div&#39;),{className:&#39;thumb-lg thumb-na&#39;,title:&#39;Sin copia espejada y la URL firmada de Meta expiró&#39;}))">':'<div class="thumb-lg thumb-na" title="Sin imagen"></div>';
+    /* Las URLs de Meta estan firmadas y caducan (~1 semana). El refresh diario las renueva
+       dentro de la ventana de 90 dias; fuera de ella pueden vencer. */
+    const img=a.img?'<img class="thumb-lg" src="'+esc(a.img)+'" loading="lazy" referrerpolicy="no-referrer" alt="Creativo '+esc(a.titulo)+'" onerror="this.replaceWith(Object.assign(document.createElement(&#39;div&#39;),{className:&#39;thumb-lg thumb-na&#39;,title:&#39;La URL firmada de Meta expiró&#39;}))">':'<div class="thumb-lg thumb-na" title="Sin imagen"></div>';
     const chip=a.camp?'<span class="ke-chip ke-c-neutral" style="margin-left:8px;">'+esc(a.camp)+'</span>':'';
     const link=a.link?'<a class="adcard-link" href="'+esc(a.link)+'" target="_blank" rel="noopener">ver anuncio ↗</a>':'';
     const titulo='<div class="adcard-h"><div class="adcard-t">'+esc(a.titulo)+chip+'</div>'+link+'</div>';
@@ -663,6 +662,8 @@ function labelRange(){
   const txt=s.getDate()+' '+MES[s.getMonth()]+' — '+t.getDate()+' '+MES[t.getMonth()]+' '+t.getFullYear();
   const np=document.getElementById('navPeriod'); if(np)np.textContent=txt;
   document.querySelectorAll('.dateauto').forEach(e=>e.textContent=txt);
+  const pl=PRESET_LBL[state.preset]||'período personalizado';
+  document.querySelectorAll('.presetauto').forEach(e=>e.textContent=pl);
 }
 function setRange(from,to){state.from=from;state.to=to;labelRange();loadData();if(window.__igReload)window.__igReload();}
 function preset(r,el){
@@ -671,7 +672,11 @@ function preset(r,el){
   let from,to=y;
   if(r==='mtd'){from=new Date(now.getFullYear(),now.getMonth(),1);}
   else if(r==='prev'){from=new Date(now.getFullYear(),now.getMonth()-1,1);to=new Date(now.getFullYear(),now.getMonth(),0);}
+  /* Los presets numericos cuentan N dias terminando AYER, igual que el resto del
+     dashboard: el dia en curso esta incompleto y ensuciaria los deltas. periods()
+     arma sola la ventana de comparacion de la misma cantidad de dias. */
   else{from=addDays(y,-(parseInt(r)-1));}
+  state.preset=r;
   setRange(from,(to<from)?new Date(from):to);
 }
 /* ===== Exportar a PDF ===== */
