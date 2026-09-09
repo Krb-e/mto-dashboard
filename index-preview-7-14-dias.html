@@ -873,9 +873,9 @@ a:hover .ig-thumb-na{background:rgba(255,112,10,.1);}
   const igSet=(id,v)=>{const e=document.getElementById(id); if(e)e.textContent=v;};
   const igEsc=v=>String(v==null?'':v).replace(/[<>]/g,c=>c==='<'?'&lt;':'&gt;');
 
-  async function igGet(table,cols){
+  async function igGet(table,cols,qs){
     const headers={apikey:IG_KEY,Authorization:'Bearer '+IG_KEY};
-    const r=await fetch(IG_URL+'/rest/v1/'+table+'?select='+cols+'&limit=1000',{headers});
+    const r=await fetch(IG_URL+'/rest/v1/'+table+'?select='+cols+'&limit=1000'+(qs||''),{headers});
     if(!r.ok){console.warn('[KE] '+table+' '+r.status+' — fuente ignorada');return [];}
     return r.json();
   }
@@ -915,6 +915,18 @@ a:hover .ig-thumb-na{background:rgba(255,112,10,.1);}
         datalabels:window.ChartDataLabels?{display:c=>c.datasetIndex===0,color:'#191919',font:{size:10,weight:700},
           formatter:(v,c)=>{const t=c.dataset.data.reduce((s,x)=>s+x,0);const p=t?v/t*100:0;return p>=6?Math.round(p)+'%':'';}}:{display:false}}}});
   }
+  /* Se queda solo con las filas de la ultima fecha cargada. La tabla de demographics
+     paso a ser acumulativa: sin este filtro las barras de edad y la dona de genero
+     sumarian todos los dias. Si ninguna fila trae fecha devuelve todo, asi el dashboard
+     sigue funcionando contra una tabla que todavia no migro. */
+  function igLastRows(rows){
+    rows=rows||[];
+    const dated=rows.filter(r=>r&&r.fecha);
+    if(!dated.length) return rows;
+    let mx=dated[0].fecha;
+    for(const r of dated) if(r.fecha>mx) mx=r.fecha;
+    return dated.filter(r=>r.fecha===mx);
+  }
   function igPick(rows){
     rows=rows||[];
     const dated=rows.filter(r=>r&&r.fecha).slice().sort((a,b)=>a.fecha<b.fecha?1:-1);
@@ -937,7 +949,7 @@ a:hover .ig-thumb-na{background:rgba(255,112,10,.1);}
         igGet(T('account_lifetime'),'fecha,username,followers,media_count,follows'),
         igGet(T('account_daily'),'fecha,account_reach,account_views,account_total_interactions,account_profile_views,account_website_clicks'),
         igGet(T('posts_media'),'thumbnail_url,permalink,date_published,media_product_type,caption,reach,views,total_interactions,likes,comments,saved,shares,follows_from_post'),
-        igGet(T('demographics'),'age,gender,follower_demographics_count'),
+        igGet(T('demographics'),'fecha,age,gender,follower_demographics_count','&order=fecha.desc'),
         igGet(T('stories'),'media_id,media_type,date_published,permalink,reach,views,total_interactions,replies,media_backup_url')
       ]);
       const LP=igPick(life), DP=igPick(daily);
@@ -1053,13 +1065,15 @@ a:hover .ig-thumb-na{background:rgba(255,112,10,.1);}
       if(stb) stb.innerHTML=stRows||'<tr><td colspan="7" class="ke-pg-sub">Sin stories registradas en el período (se capturan desde el 04/08 en adelante).</td></tr>';
 
 
+      const demoLast=igLastRows(demo);
+
       const ages=['13-17','18-24','25-34','35-44','45-54','55-64','65+'];
-      const byAge=ages.map(a=>demo.filter(d=>d.age===a).reduce((s,d)=>s+(+d.follower_demographics_count||0),0));
+      const byAge=ages.map(a=>demoLast.filter(d=>d.age===a).reduce((s,d)=>s+(+d.follower_demographics_count||0),0));
       igBar('ig-cAge',ages,byAge);
 
       const gmap={F:'Femenino',M:'Masculino',U:'Sin especificar'};
       const gk=['F','M','U'];
-      const byG=gk.map(g=>demo.filter(d=>d.gender===g).reduce((s,d)=>s+(+d.follower_demographics_count||0),0));
+      const byG=gk.map(g=>demoLast.filter(d=>d.gender===g).reduce((s,d)=>s+(+d.follower_demographics_count||0),0));
       const gtot=byG.reduce((s,x)=>s+x,0)||1;
       igDonut('ig-cGender',gk.map(g=>gmap[g]),byG);
       document.getElementById('ig-genderLegend').innerHTML=gk.map((g,i)=>
