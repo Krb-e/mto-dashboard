@@ -190,7 +190,8 @@ table.ke-t tfoot td:first-child{text-align:left;}
 /* SELECTOR TOP N (Mejores publicaciones) */
 .ig-sel{background:var(--ke-bg);border:1px solid var(--ke-border);color:var(--ke-text);font-family:'Bitroad',sans-serif;font-size:10px;letter-spacing:.04em;border-radius:8px;padding:5px 8px;cursor:pointer;color-scheme:dark;}
 /* CONCLUSIONES & ACCIONABLES */
-.ke-ins-wrap{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px;}
+/* Excepcion a la regla: el Sprint Review va entero en General Sans. */
+.ke-ins-wrap{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px;font-family:'General Sans',sans-serif;}
 .ke-ins-card{background:var(--ke-card);border:1px solid var(--ke-border);border-radius:12px;padding:16px 18px;}
 .ke-ins-card.cur{border-color:rgba(255,112,10,.3);}
 .ke-ins-wk{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--ke-muted);margin-bottom:6px;}
