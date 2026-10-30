@@ -385,7 +385,7 @@ async function loadData(){
   const pFrom=iso(addDays(fi,-len)), pTo=iso(addDays(fi,-1)); // período anterior comparable
   const tTo=E_cur+'T23:59:59';
   try{
-    const [rev,ga4,tn,meta,google,ma,mlo,ig,igacc,ins]=await Promise.all([
+    const [rev,ga4,tn,meta,google,ma,mlo,ig,igacc,ins,em]=await Promise.all([
       sb(T('revenue'),'date,source_medium,purchase_revenue,transactions,sessions,total_users,add_to_carts','date',pFrom,E_cur),
       sb(T('ga4_sessions'),'date,source_medium,total_users,sessions,transactions,total_revenue','date',pFrom,E_cur),
       sb(T('tiendanube_orders'),'date,order_payment_status,order_total_paid,order_total_products','date',pFrom,E_cur),
@@ -395,7 +395,9 @@ async function loadData(){
       sb(T('ml_orders'),'order_date_created,order_status,order_payment_status,order_total_amount,order_total_quantity','order_date_created',pFrom,tTo),
       sb(T('ig_posts_media'),'date_published,media_type,media_product_type,permalink,thumbnail_url,caption,reach,total_interactions,saved,shares,likes,comments,follows_from_post,views','date_published',S_cur,tTo),
       sb(T('ig_account_daily'),'fecha,account_reach,account_views,account_total_interactions,account_shares,account_saves,account_comments','fecha',pFrom,E_cur),
-      sb(T('insights'),'semana,area,estatus,accionable,impacto_esperado,resumen,resultado,responsable',null)
+      sb(T('insights'),'semana,area,estatus,accionable,impacto_esperado,resumen,resultado,responsable',null),
+      // email marketing (campañas Perfit): si la tabla falta o no hay envíos en el evento, la pestaña Email se oculta
+      sb(T('email_marketing'),'date,campaign_name,campaign_subject,sent,delivered,opened,clicked,bounced,unsubscribed,conversions,conversions_amount','date',pFrom,E_cur)
     ]);
     // store = revenue (purchase_revenue + add_to_carts) por fecha; si una fecha
     // no tiene revenue cargado (ETL parcial del día en curso), se usa GA4 total_revenue.
@@ -404,7 +406,7 @@ async function loadData(){
     const mapGa4=g=>({date:g.date,source_medium:g.source_medium,purchase_revenue:g.total_revenue,transactions:g.transactions,sessions:g.sessions,total_users:g.total_users,add_to_carts:null});
     const store=rev.filter(r=>goodRev.has(r.date)).concat(ga4.filter(g=>!goodRev.has(g.date)).map(mapGa4));
     const tnPaid=tn.filter(o=>o.order_payment_status==='paid');
-    DATA={store,tn:tnPaid,meta,google,ma,mlo:mlo.filter(o=>o.order_payment_status==='approved'),ig,igacc,ins};
+    DATA={store,tn:tnPaid,meta,google,ma,mlo:mlo.filter(o=>o.order_payment_status==='approved'),ig,igacc,ins,em};
     DATA._win={S_cur,E_cur,pFrom,pTo,fi,ff,endData,today};
     // facturación real de la tienda (Tiendanube) si hay datos en la ventana del evento; si no, atribución GA4/revenue
     DATA._hasTN = tnPaid.some(o=>{const d=(o.date||'').slice(0,10);return d>=S_cur&&d<=E_cur;});
@@ -413,6 +415,8 @@ async function loadData(){
     HAS.meli = DATA.mlo.length>0 || ma.length>0;
     HAS.social = ig.length>0 || igacc.length>0;
     HAS.sprint = ins.length>0;
+    HAS.email = inWin(em,'date',S_cur,E_cur).length>0;   // sólo si hubo envíos durante el evento
+    HAS.emailInsights = ins.some(i=>/mail/i.test(i.area||''));
     HAS.paidInsights = ins.some(i=>/paid/i.test(i.area||''));
     HAS.consulInsights = ins.some(i=>/consul/i.test(i.area||''));
 
@@ -465,6 +469,9 @@ function headFor(a,b){
   // social
   const alc=S(ig,x=>x.reach)||S(iga,x=>x.account_reach), inter=S(ig,x=>x.total_interactions)||S(iga,x=>x.account_total_interactions),
         saved=S(ig,x=>x.saved), shares=S(ig,x=>x.shares), follows=S(ig,x=>x.follows_from_post), nposts=ig.length;
+  // email: tasas recalculadas desde los conteos (open/CTR sobre entregados, CTOR sobre aperturas, rebote sobre enviados)
+  const em=inWin(DATA.em||[],'date',a,b), mSent=S(em,x=>x.sent), mDel=S(em,x=>x.delivered), mOpen=S(em,x=>x.opened), mClk=S(em,x=>x.clicked);
+  const mailFact=S(em,x=>x.conversions_amount), mailOrd=S(em,x=>x.conversions), mailEnv=em.length;
   return {
     fact,ord,factSrc,ticket:ord?fact/ord:0,ses,usr,atc,cvr:ses?ord/ses*100:0,
     invMeta,factMeta,cpaMeta:compMeta?invMeta/compMeta:0,acosMeta:factMeta?invMeta/factMeta*100:0,
@@ -475,6 +482,8 @@ function headFor(a,b){
     inv:invMeta+invGoogle,acos:fact?(invMeta+invGoogle)/fact*100:0,
     meliFact,meliOrd,meliInvAds,meliFactAds,meliRoas:meliInvAds?meliFactAds/meliInvAds:0,meliAcos:meliFactAds?meliInvAds/meliFactAds*100:0,meliImpr,meliClk,
     alc,inter,er:alc?inter/alc*100:0,saved,shares,follows,nposts,
+    mailFact,mailOrd,mailEnv,mailSent:mSent,mailDel:mDel,mailOr:mDel?mOpen/mDel*100:0,mailCtr:mDel?mClk/mDel*100:0,mailCtor:mOpen?mClk/mOpen*100:0,
+    mailBounce:mSent?S(em,x=>x.bounced)/mSent*100:0,mailUnsub:mDel?S(em,x=>x.unsubscribed)/mDel*100:0,_rowsEm:em,
     _rowsMeta:mt,_rowsGoogle:gg,_rowsMa:ma,_rowsIg:ig,_store:st
   };
 }
@@ -499,11 +508,12 @@ function maxDataTs(){
 }
 
 /* ============ NAV / DAY FILTER ============ */
-const TABS_ALL=[['overview','Overview','tienda:true'],['tienda','Tienda'],['paid','Paid Media'],['meli','Mercado Libre'],['social','Social'],['sprint','Sprint Review']];
-const TITLES={overview:['Resumen general','OVER<span>VIEW</span>'],tienda:['Comportamiento de tienda','TIEN<span>DA</span>'],paid:['Pauta','PAID <span>MEDIA</span>'],meli:['Mercado Libre','MERCADO <span>LIBRE</span>'],social:['Redes sociales','SOCIAL <span>MEDIA</span>'],sprint:['Sprint review','SPRINT <span>REVIEW</span>']};
+const TABS_ALL=[['overview','Overview','tienda:true'],['tienda','Tienda'],['paid','Paid Media'],['email','Email Mkt'],['meli','Mercado Libre'],['social','Social'],['sprint','Sprint Review']];
+const TITLES={overview:['Resumen general','OVER<span>VIEW</span>'],tienda:['Comportamiento de tienda','TIEN<span>DA</span>'],paid:['Pauta','PAID <span>MEDIA</span>'],email:['Email marketing','EMAIL <span>MKT</span>'],meli:['Mercado Libre','MERCADO <span>LIBRE</span>'],social:['Redes sociales','SOCIAL <span>MEDIA</span>'],sprint:['Sprint review','SPRINT <span>REVIEW</span>']};
 function visibleTabs(){
   return TABS_ALL.filter(t=>{
     if(t[0]==='meli')return HAS.meli;
+    if(t[0]==='email')return HAS.email;
     if(t[0]==='social')return HAS.social;
     if(t[0]==='sprint')return HAS.sprint;
     return true;
@@ -551,7 +561,7 @@ function render(){
   const D=dayState();
   const el=document.getElementById('content');
   if(D.future){el.innerHTML=emptyTab(D);return;}
-  el.innerHTML=({overview:ovTab,tienda:tiTab,paid:paTab,meli:coTab,social:soTab,sprint:spTab})[state.tab](D);
+  el.innerHTML=({overview:ovTab,tienda:tiTab,paid:paTab,email:emTab,meli:coTab,social:soTab,sprint:spTab})[state.tab](D);
   drawCharts(D);
 }
 function emptyTab(D){return `<div class="empty"><div class="ei">🕓</div><h4>${D.dow} ${D.dm} — este día todavía no transcurrió</h4>
@@ -691,6 +701,36 @@ function coTab(D){
   ${HAS.consulInsights?areaSprint('consul','Consultoría'):''}`;
 }
 
+/* ---- EMAIL ---- */
+function escH(v){return String(v==null?'':v).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]);}
+function emTab(D){
+  const h=D;
+  const mpct=h.fact?h.mailFact/h.fact*100:0;
+  const camps=(h._rowsEm||[]).slice().sort((a,b)=>(+b.conversions_amount||0)-(+a.conversions_amount||0));
+  const rows=camps.map((c,i)=>{const del=+c.delivered||0;const subj=String(c.campaign_subject||'').replace(/^asunto:\s*/i,'');
+    return `<tr class="${i===0?'top':''}"><td class="rk">${i+1}</td><td class="nm">${escH(c.campaign_name||'(campaña)')}${subj?`<div style="opacity:.6;font-size:11px;margin-top:2px">${escH(subj)}</div>`:''}</td>
+    <td class="n">${fmtD(c.date)}</td><td class="n">${nf(c.sent)}</td><td class="n">${del?pc((+c.opened||0)/del*100):'—'}</td><td class="n">${del?pc((+c.clicked||0)/del*100):'—'}</td><td class="n">${nf(c.conversions)}</td><td class="n hi">${M(c.conversions_amount)}</td></tr>`;}).join('');
+  return `
+  ${secH('Email marketing · Perfit',nf(h.mailEnv)+(h.mailEnv===1?' campaña':' campañas'))}
+  <div class="kgrid kg4">
+    ${kc('Fact. atribuida',M(h.mailFact),h.fact?pc(mpct)+' de la tienda':'Atribuida por Perfit',1)}
+    ${kc('Open rate',pc(h.mailOr),'CTR '+pc(h.mailCtr))}
+    ${kc('Campañas enviadas',nf(h.mailEnv),state.day==='all'?'En el evento':'En el día')}
+    ${kc('Envíos',nf(h.mailSent),nf(h.mailDel)+' entregados')}
+  </div>
+  <div class="kgrid kg4">
+    ${kc('CTOR',pc(h.mailCtor),'Clicks sobre aperturas')}
+    ${kc('Órdenes por email',nf(h.mailOrd),'Atribuidas')}
+    ${kc('Desuscriptos',pc(h.mailUnsub,2),'Sobre entregados')}
+    ${kc('Rebote',pc(h.mailBounce,2),'Sobre enviados')}
+  </div>
+  ${camps.length?`${secH('Campañas del evento','Por facturación atribuida')}
+  <div class="blk"><div class="blkh"><span class="blkt">Envíos por performance</span><span class="blkt">Perfit</span></div>
+    <div class="scroll"><table class="t"><thead><tr><th>#</th><th>Campaña</th><th class="n">Fecha</th><th class="n">Envíos</th><th class="n">Open rate</th><th class="n">CTR</th><th class="n">Órdenes</th><th class="n">Fact. atrib.</th></tr></thead>
+    <tbody>${rows}</tbody></table></div></div>`:''}
+  ${HAS.emailInsights?areaSprint('email','Email'):''}`;
+}
+
 /* ---- SOCIAL ---- */
 function soTab(D){
   const h=D;
@@ -753,7 +793,7 @@ function fmtSem(s){if(!s)return '—';const d=parseISO(String(s).slice(0,10));if
 
 /* ---- area sprint (dentro de paid/meli) ---- */
 function areaSprint(key,areaMatch){
-  const re=key==='consul'?/consul/i:/paid/i;
+  const re=key==='consul'?/consul/i:key==='email'?/mail/i:/paid/i;
   const items=(DATA.ins||[]).filter(r=>re.test(r.area||'')&&(txt(r.estatus)||txt(r.resumen))).sort((a,b)=>String(b.semana).localeCompare(String(a.semana))).slice(0,2);
   if(!items.length)return '';
   return secH('Sprint review del área · últimas semanas','Accionables')+
